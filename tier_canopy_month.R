@@ -1,14 +1,21 @@
 #Load libraries
 library(ggplot2)
 library(dplyr)
+library(lubridate)
 
 #Set scientific notation threshold
 options(scipen = 100)
 
 #Import data, subset desired columns, rename variables for consistency
 plants <- read.csv("~/Documents/Cannabis Study/plants_2016.csv") %>%
-              select(id, location) %>%
+              select(id, location, sessiontime) %>%
                 rename(plantid = id, locationid = location)
+
+plants$sessiontime <- as_datetime(plants$sessiontime)
+
+plants$plant_month <- month(plants$sessiontime)
+plants$plant_year <- year(plants$sessiontime)
+
 
 locations <- read.csv("~/Documents/Cannabis Study/locations_full.csv") %>%
                 select(orgid, locationtype, licensenum, id) %>%
@@ -39,8 +46,20 @@ plants_tier  <-  locations_plants %>%
 #boxplots
 ggplot(plants_tier, aes(x = factor(locationtype), y = plants, fill = factor(locationtype))) + geom_boxplot(alpha=0.5)
 
+
+
+
 ggplot(plants_tier, aes(x = factor(locationtype), y = plants, fill = factor(locationtype))) + 
-  geom_boxplot(alpha=0.5, notch = T) + ylim(c(0,10000))
+  geom_boxplot(alpha=0.5, notch = T) + ylim(c(0,10000)) + xlab("License Tier") + ylab("Number of Plants") +
+  ggtitle("Number of Plants by License Tier 2016") + scale_fill_discrete(name="Tier") + theme_bw()
+
+
+
+
+
+
+plants_tier$locationtype <- plyr::mapvalues(plants_tier$locationtype, from = c(4, 5, 6), to = c(1, 2, 3))
+
 
 #Violin plots
 ggplot(plants_tier, aes(x = factor(locationtype), y = plants, fill = factor(locationtype))) + 
@@ -105,15 +124,60 @@ ggplot(plants_grow_type, aes(x = factor(grow_type), y = canopy, fill = factor(gr
 ggplot(plants_grow_type, aes(x = canopy, fill = factor(grow_type))) + geom_density(alpha = 0.15) + theme_bw()
 
 ggplot(plants_grow_type[plants_grow_type$locationtype == 5 | plants_grow_type$locationtype == 6,], 
-       aes(x = canopy, fill = factor(grow_type))) + geom_density(alpha = 0.2) 
+       aes(x = canopy, fill = factor(grow_type))) + 
+       geom_density(alpha = 0.2) + xlab("Canopy in square footage") +
+       ylab("Density") + ggtitle("Density of Canopy Usage by Growing Strategy") + 
+       scale_fill_discrete(name="Grow Type") + theme_bw()
 
+
+
+
+
+
+
+
+
+
+
+#Shows seasonal variation in the number of plants
+ggplot(plants_tier, aes(x = plant_month, y = plants, fill = factor(locationtype))) + geom_bar(stat = 'identity')
+
+
+#Shows seasonal variation by location type
+ggplot(plants_tier, aes(x = factor(plant_month), y = plants)) + 
+  geom_bar(stat = 'identity') + facet_wrap(~ factor(locationtype))
+
+
+
+ggplot(plants_grow_type_month, aes(x = factor(plant_month), y = plantid)) + 
+  geom_bar(stat = 'count') + facet_wrap(~ grow_type)
 
 
 
 #
-canopy  <-  plants_grow_type %>% 
-                    group_by(locationtype, grow_type) %>% 
-                    summarize(plants = length(plantid))
+
+#Grouping by licensenum or locationid produce the same results here, as expected
+plants_tier_month  <-  plants_grow_type %>% 
+                          group_by(locationtype, grow_type, plant_month) %>% 
+                            summarize(plants = length(plantid))
+
+ggplot(plants_tier_month, aes(x = factor(plant_month), y = plants, fill = factor(locationtype))) + 
+  geom_bar(stat = 'identity') + facet_wrap(~ grow_type) + theme_bw() 
 
 
 
+tiers_combined <- plants_tier_month
+tiers_combined$locationtype <- plyr::mapvalues(tiers_combined$locationtype, from = c(4, 5, 6), to = c(1, 2, 3))  
+ 
+tiers_combined <- tiers_combined %>% group_by(locationtype, grow_type, plant_month) %>%
+                      summarize(plants = sum(plants))
+  
+ggplot(tiers_combined, aes(x = factor(plant_month), y = plants, fill = factor(locationtype))) + 
+  geom_bar(stat = 'identity') + facet_wrap(~ grow_type) + theme_bw() + 
+  ggtitle("Monthly Variation in Plant Production by Grow Type 2016") +
+  xlab("Month") + ylab("Number of Plants") + scale_fill_discrete(name = "Tier")
+
+
+ggplot(tiers_combined, aes(x=grow_type, y=plants)) + geom_bar(stat = 'identity') 
+
+  
