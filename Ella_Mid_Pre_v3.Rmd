@@ -1,0 +1,181 @@
+---
+title: "Ella_Mid_Pre_v3"
+author: "EllaJiang"
+date: "2/19/2018"
+output: html_document
+---
+
+```{r load library}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(grid)
+library(gtable)
+library(gridExtra)
+```
+
+```{r get data}
+# read 1% of the whole dataset as an sample
+dataset = read.csv(file = "price_invtype_sample1.csv", header = TRUE) 
+dataset =  
+  mutate(dataset, year_month = format(as.Date(dataset$sale_date),"%Y-%m")) %>%
+  subset(subset = invtype == "Usable Marijuana ") %>%
+  subset(subset = year_month >= "2015-11") %>%
+  subset(!is.na(usableweight) & usableweight != 0 & price_adjust != 0 & !is.na(price_adjust)) %>%
+  mutate(price_gram = price_adjust/usableweight)
+
+# remove scientific notation
+options(scipen = 999) 
+```
+
+1. method 1
+```{r distribution}
+ggplot(data = dataset, mapping = aes(x = year_month, y = price_gram)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  labs(title = "Distribution of Price Per Gram for Usable Marijuana", x = "Time", y = "dollar per gram") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 16),
+        axis.text.y = element_text(size = 16),
+         axis.title=element_text(size = 16),
+        plot.title = element_text(hjust = 0.5, size = 26)) 
+```
+
+```{r outliers}
+ggplot(data = dataset, mapping = aes(sample = price_gram, color = year_month)) + 
+  stat_qq(distribution='qunif') + 
+  labs(x = 'Quantiles', y = 'Price Per Gram', color = 'Year and Month', 
+       title = 'Quantile Plot, Price Per Gram (Grouped by Year and Month)') +
+  theme(legend.position="none",
+        axis.text.x = element_text(size = 16),
+        axis.text.y = element_text(size = 16),
+        axis.title=element_text(size = 16),
+        plot.title = element_text(hjust = 0.5, size = 26)) 
+
+price1 = 
+  ddply(dataset, "year_month", mutate, 
+               one_percent = quantile(price_gram,0.01),
+               ninety_nine_percent = quantile(price_gram,0.99)) %>%
+  subset(price_gram >= one_percent & price_gram <= ninety_nine_percent)
+
+ggplot(data = price1, mapping = aes(x = year_month, y = price_gram)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  labs(title = "New Distribution of Price Per Gram for Usable Marijuana", 
+       x = "Time", y = "dollar per gram",
+       caption  = "After removing top 1% and bottom 1% price per gram data") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 16),
+        axis.text.y = element_text(size = 16),
+        axis.title= element_text(size = 16,face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 26)) 
+```
+
+```{r average price}
+price1.month = ddply(price1, "year_month", summarise, price_gram_ave = mean(price_gram))
+```
+
+2. Method2
+```{r distritbuion2}
+ggplot(data = dataset, mapping = aes(x = year_month, y = price_adjust)) +
+  geom_point(position = "jitter", size = 0.5) +
+  labs(title = "Distribution of Price\nfor Usable Marijuana", x = "Time", y = "dollar") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12),
+        axis.text.y = element_text(size = 12),
+         axis.title=element_text(size = 14,face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 18))
+```
+
+
+```{r outliers2}
+ggplot(data = dataset, 
+       mapping = aes(sample = price_adjust, color = year_month)) + 
+  stat_qq(distribution='qunif') + 
+  labs(x = 'Quantiles', y = 'Price', color = 'Year and Month', 
+       title = 'Quantile Plot, Price (Grouped by Year and Month)')
+
+price2 = 
+  ddply(dataset, "year_month", mutate, 
+               one_percent = quantile(price_adjust,0.01),
+               ninety_nine_percent = quantile(price_adjust,0.99)) %>%
+  subset(price_adjust >= one_percent & price_adjust <= ninety_nine_percent)
+
+ggplot(data = price2, mapping = aes(x = year_month, y = price_adjust)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  labs(title = "New Distribution of Price\nfor Usable Marijuana", 
+       x = "Time", y = "dollar per gram",
+       caption  = "After removing top 1% and bottom 1% price per gram data") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title= element_text(size = 14,face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
+
+ggplot(data = price2, mapping = aes(x = year_month, y = usableweight)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  labs(title = "New Distribution of Usable Weight\nfor Usable Marijuana", 
+       x = "Time", y = "Usable Weight",
+       caption  = "After removing top 1% and bottom 1% price per gram data") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title= element_text(size = 14,face="bold"),
+        plot.title = element_text(hjust = 0.5, size = 18)) 
+```
+
+```{r average price2}
+price2.month = ddply(price2, "year_month", summarise,
+                      total_price = sum(price_adjust),
+                      total_weight = sum(usableweight),
+                      average_price = total_price/total_weight)
+```
+
+```{r compare}
+ggplot() + 
+  geom_line(price1.month, 
+            mapping = aes(x =year_month, y = price_gram_ave, group = 1), color = "dodgerblue2", size = 1) +
+  geom_line(price2.month,
+            mapping = aes( x = year_month, y = average_price, group = 1), color = "red2", size = 1) +
+  labs(title = "Compare of Two Price Methods for Usable Marijuana", 
+       x = "Time", y = "Average Price", 
+       caption = "\nAfter remove outliers. For average(price per gram), n = 390918. For total price/ total gram, n = 391235\nMethod1: 1) calculate price per gram for each transaction, 2) remove outliers, 3) calculate the average price per gram in each month\nMethod2: 1) calculate total revenue and total sold amount in each month, 2) remove outliers, 3) divide total revenue by total amount to get average price") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 14),
+        axis.text.y = element_text(size = 14),
+        axis.title= element_text(size = 18),
+        plot.title = element_text(hjust = 0.5, size = 26),
+        plot.caption = element_text(hjust = 0)) +
+  annotate("text", x = 7, y = 11, label = "Method1: Average(price per gram)", color = "dodgerblue2", size = 6) + 
+  annotate("text", x = 7 , y = 8.5, label = "Method2: Total Price/Total Amount", color = "red2", size = 6) 
+
+price.month = mutate(price1.month,price2.month$average_price)
+names(price.month)[2] = "Method1"
+names(price.month)[3] = "Method2"
+price.month = mutate(price.month, difference = Method1 - Method2, ratio = Method1/Method2-1)
+```
+
+
+```{r summary}
+trans = aggregate( cbind(usableweight, price_adjust) ~ transactionid, dataset, sum)
+trans.date = aggregate(year_month ~ transactionid, dataset, max)
+trans = merge(trans,trans.date, "transactionid")
+
+
+summary = ddply(trans, "year_month", summarise,
+                price = mean(price_adjust),
+                average_weight = mean(usableweight))
+
+price.graph = ggplot() + 
+  geom_line(data = summary, mapping = aes(x = year_month , y = price, group = 1), size = 1) + 
+  labs(title = 'Average Price Per Transaction\nfor Usable Marijuana',
+       y = 'Average Price', x = "Time") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 16),
+        axis.text.y = element_text(size = 16),
+        axis.title= element_text(size = 16),
+        plot.title = element_text(hjust = 0.5, size = 20)) 
+
+weight.graph = ggplot() + 
+  geom_line(data = summary, mapping = aes(x = year_month , y = average_weight, group = 1 ), size = 1) + 
+  labs(title = 'Average Weight Per Transaction\nfor Usable Marijuana',
+       y = 'Average Usable Weight', x = "Time") + ylim(2,3) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 16),
+        axis.text.y = element_text(size = 16),
+        axis.title= element_text(size = 16),
+        plot.title = element_text(hjust = 0.5, size = 20)) 
+
+gridExtra::grid.arrange(price.graph, weight.graph,nrow = 1)
+```

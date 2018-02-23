@@ -1,0 +1,557 @@
+---
+title: "Midterm Presentation"
+author: "EllaJiang"
+date: "2/15/2018"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    toc_depth: 4
+    theme: cerulean
+    highlight: tango
+---
+```{r global_options, include=FALSE} 
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+# knitr::opts_chunk$set(warning=FALSE, message=FALSE)
+```
+
+```{r load library}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(grid)
+library(gtable)
+library(gridExtra)
+```
+
+### Data Exploration
+
+#### load data and change some variable names
+
+I load 1% of whole dataset as an sample to do some data exploration of the price change for marijuana.
+
+```{r get data}
+# read 1% of the whole dataset as an sample
+dataset = read.csv(file = "price_invtype_sample1.csv", header = TRUE)
+
+# remove scientific notation
+options(scipen = 999) 
+
+# generate year_month variables for further analysis
+dataset$year_month = format(as.Date(dataset$sale_date),"%Y-%m")
+```
+
+#### Data exploration of transaction frequency
+
+```{r transaction frequency}
+# dataset for transaction frequency count
+dataset.count = dataset
+
+# count the transaction frequency in each month
+count.month = ddply(dataset.count,
+                    "year_month",
+                    summarise,
+                    n.sold = n())
+
+# add the transaction frequency of each inventory type in each month
+count.month.inv = ddply(dataset.count,
+                    c("year_month","invtype"),
+                    summarise,
+                    n.sold = n())
+
+# plot the transaction frequency of total and of each inventory in each month
+count = ggplot() + 
+  geom_line(data = count.month.inv, 
+            mapping = aes(x = year_month , y = n.sold, group = invtype, color = invtype), 
+            size = 0.8) + 
+  geom_line(data = count.month, 
+            mapping = aes(x = year_month, y = n.sold), 
+            color = "black", group = 1) +
+  labs(title = 'Transaction frequency cross months\nTotal and by inventory type',
+       y = 'transaction frequency', 
+       x = "years and months", size = 8) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green")
+count
+```
+
+**Findings of transaction frequency:**
+
+- There is a large gap between 2015-08 to 2015-11 and a drop in year 2017. I think there is something wrong with the data of these months.
+- In general ,the transcation frequency is increasing at a stable pace through years. There is a large increase in June 2016 and the increase rate decrease from July 2016, which may due to that Washington begain to tax on marijuana on July 1st, 2016. Theres is also a small jump of frequency in December 2016, but I am not sure why it happened.
+- Among different inventory types, Usable Marijuana increases most quickly in the past three years. Usable Marijuana and Marijuana Extract for Inhalation are the top 2 inventory type in terms of transaction frequency.
+
+#### Data exploration of Weight
+
+```{r total usable weight}
+# dataset for weight
+dataset.weight = subset(dataset, subset = !is.na(usableweight))
+
+# calculate the total usableweight of each inventory type in each month
+weight.month.inv = ddply(dataset.weight,
+                    c("year_month","invtype"),
+                    summarise,
+                    weight = sum(usableweight))
+
+# plot the total usableweight of each inventory type in each month
+weight = ggplot(data = weight.month.inv, mapping = aes(x = year_month , y = weight, group = invtype, fill = invtype)) + 
+  geom_area() + 
+  labs(title = 'Total usable weight cross months\nBy inventory type',y = 'Total usable weight (gram)', x = "years and months", size = 8) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green")
+weight
+```
+
+#### Data exploration of Revenue
+
+```{r Revenue}
+# dataset for revenue
+dataset.revenue = dataset
+
+# calculate the total revenue of each inventory type in each month
+revenue.month.inv = ddply(dataset.revenue,
+                    c("year_month","invtype"),
+                    summarise,
+                    revenue = sum(price_adjust))
+
+# plot the total revenue of each inventory in each month
+revenue = ggplot(data = revenue.month.inv, mapping = aes(x = year_month , y = revenue, group = invtype, fill = invtype)) + 
+  geom_area() + 
+  labs(title = 'Revenue cross months\nBy inventory type',y = 'Total revenue($)', x = "years and months", size = 8) + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green")
+revenue
+```
+
+**Findings of revenue:**
+
+- Again, there is a large gap between 2015-08 to 2015-11 and in 2017.
+- In general, the revenue increases over months, and increased most qucikly after July 2016, which we think is due to the 37% tax enforced in that month. The tax lead to price increase.
+- Usable Marijuana and Marijuana Extract for Inhalation occupy the largest share of revenue.
+
+### Price Trend Analysis
+
+#### Method 1: Avarage of price per gram
+
+1. Distribution of price per gram in each month of Usable Marijuana and Marijuana Extract for Inhalation
+```{r Price Trend Analysis of Method 1}
+# generate the dataset for price analysis
+dataset.price1 = 
+  # remove null values and 0 in usableweight and price_adjust
+  subset(dataset, !is.na(usableweight) & usableweight != 0 & price_adjust != 0 & !is.na(price_adjust)) %>% 
+  # calculate the price per gram for each transaction
+  mutate(price_gram = price_adjust/usableweight) %>%
+  # remove other inventory types except Usable Marijuana and Marijuana Extract for Inhalation
+  subset(invid %in% c(24,28))
+
+# show the distribution of price per gram in each month by different inventory type
+ggplot(data = dataset.price1, mapping = aes(x = year_month, y = price_gram)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  facet_wrap("invtype", ncol = 1, scale = "free") +
+  labs(title = "Distribution of price per gram", x = "year and month", y = "price per gram ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6))
+```
+
+2. Clean Data
+remove the top 5% and bottom 5% of price per gram of each inventory type in each month
+```{r clean data}
+dataset.price1.1 = 
+  # calculate the 5% and 95% quantiles of each inventory type in each months
+  ddply(dataset.price1, c("invtype","year_month"), mutate, 
+        five_percent = quantile(price_gram,0.05),
+        ninety_five_percent = quantile(price_gram,0.95)) %>%
+  # remove all rows whose price_gram is less than the 5% quantile or more than the 95% quantile
+  subset(price_gram >= five_percent & price_gram <= ninety_five_percent)
+
+# show the distribution of price per gram in each month by different inventory type within the 5%-95%
+ggplot(data = dataset.price1.1, mapping = aes(x = year_month, y = price_gram)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  facet_wrap("invtype", ncol = 1, scale = "free") +
+  labs(title = "New distribution of price per gram", subtitle = "After removing top 5% and bottom 5% price_gram data", x = "year and month", y = "price per gram ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6))
+```
+
+3. Average price per gram trend of Usable Marijuana and Marijuana Extract for Inhalation
+```{r average price per gram trend}
+# calculate the average gram_price of each inventory type in each month
+price1.month.inv = ddply(dataset.price1.1, c("year_month","invtype"), summarise,
+                         price_gram_ave = mean(price_gram))
+
+# the distribution of average gram_price of each inventory type in each month
+price1 = ggplot(data = price1.month.inv, mapping = aes(x = year_month, y = price_gram_ave, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = "average price per gram", subtitle = "By months and inventory type", x = "years and months", y = "average price per gram") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  theme(legend.position="bottom")
+price1
+```
+
+#### Method 2: Total price/Total usableweight
+
+1. Distribution of price and usable weight
+```{r Price Trend Analysis with Method2}
+dataset.price2 = 
+   # remove null values and 0 in usableweight and price_adjust
+   subset(dataset, !is.na(usableweight) & usableweight != 0 & price_adjust != 0 & !is.na(price_adjust)) %>%
+   # remove other inventory types except Usable Marijuana and Marijuana Extract for Inhalation
+   subset(invid %in% c(24,28))
+
+# distribution of adjusted price of each transaction by different inventory type
+ggplot(data = dataset.price2, mapping = aes(x = year_month, y = price_adjust)) + 
+  geom_point(position = "jitter", size = 0.5) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "distribution of adjusted price of each transaction", x = "year and month",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# distribution of usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2, mapping = aes(x = year_month, y = usableweight)) + 
+  geom_point(position = "jitter", size = 0.5) +
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "distribution of usable weight of each transaction", x = "year and month", y = "usable weight (gram)") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# adjusted price vs usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2, mapping = aes(x = usableweight, y = price_adjust)) + 
+  geom_point(size = 0.1) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "adjusted price vs usable weight of each transaction", x = "usable weight (gram)",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+```
+
+2. Clean data
+
+ 2.1. remove the top 5% and bottom 5% of price of each inventory type in each month
+```{r clean data 2.1}
+dataset.price2.1 = 
+  # calculate the 5% and 95% quantiles price of each inventory type in each months
+  ddply(dataset.price2, c("invtype","year_month"), mutate, 
+        five_percent = quantile(price_adjust,0.05),
+        ninety_five_percent = quantile(price_adjust,0.95)) %>%
+  # remove all rows whose price is less than the 5% quantile or more than the 95% quantile
+  subset(price_adjust >= five_percent & price_adjust <= ninety_five_percent)
+
+# New distribution of adjusted price of each transaction by different inventory type
+ggplot(data = dataset.price2.1, mapping = aes(x = year_month, y = price_adjust)) + 
+  geom_point(position = "jitter", size = 0.5) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "New distribution of adjusted price of each transaction", x = "year and month",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# New distribution of usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2.1, mapping = aes(x = year_month, y = usableweight)) + 
+  geom_point(position = "jitter", size = 0.5) +
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "New distribution of usable weight of each transaction", x = "year and month", y = "usable weight (gram)") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# adjusted price vs usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2.1, mapping = aes(x = usableweight, y = price_adjust)) + 
+  geom_point(size = 0.1) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "adjusted price vs usable weight of each transaction", x = "usable weight (gram)",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+```
+
+ 2.2. remove the top 5% and bottom 5% of usable weight of each inventory type in each month
+```{r clean data 2.2}
+dataset.price2.2 = 
+  # calculate the 5% and 95% quantiles usable weight of each inventory type in each months
+  ddply(dataset.price2, c("invtype","year_month"), mutate, 
+        five_percent = quantile(usableweight,0.05),
+        ninety_five_percent = quantile(usableweight,0.95)) %>%
+  # remove all rows whose usable weight is less than the 5% quantile or more than the 95% quantile
+  subset(usableweight >= five_percent & usableweight <= ninety_five_percent)
+
+# New distribution of adjusted price of each transaction by different inventory type
+ggplot(data = dataset.price2.2, mapping = aes(x = year_month, y = price_adjust)) + 
+  geom_point(position = "jitter", size = 0.5) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "New distribution of adjusted price of each transaction", x = "year and month",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# New distribution of usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2.2, mapping = aes(x = year_month, y = usableweight)) + 
+  geom_point(position = "jitter", size = 0.5) +
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "New distribution of usable weight of each transaction", x = "year and month", y = "usable weight (gram)") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# adjusted price vs usable weight of each transaction by different inventory type
+ggplot(data = dataset.price2.2, mapping = aes(x = usableweight, y = price_adjust)) + 
+  geom_point(size = 0.1) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "adjusted price vs usable weight of each transaction",x = "usable weight (gram)",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+```
+
+ 3. trend of total price/total amount of Usable Marijuana and Marijuana Extract for Inhalation
+ 
+- choose to remove top 5% and bottom 5% of price of each inventory type in each month
+
+```{r total price/ total amount trend}
+# calculate the total price/total amount of each inventory type in each month
+price2.month.inv = ddply(dataset.price2.1, c("year_month","invtype"), summarise,
+                         total_price = sum(price_adjust),
+                         total_weight = sum(usableweight),
+                         tprice_tweight = total_price/total_weight)
+
+# the distribution of average price of each inventory type in each month
+price2 = ggplot(data = price2.month.inv, mapping = aes(x = year_month, y = tprice_tweight, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = "total price/total amount", subtitle = "By months and inventory type", x = "years and months", y = "average price") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  theme(legend.position="bottom")
+price2
+```
+
+#### Compare the result of method1 and method2
+
+1. different methods
+```{r compare}
+# put the graphs together
+gridExtra::grid.arrange(price1, price2,nrow = 1)
+```
+
+2. different inventory
+```{r compare2}
+ggplot() + 
+  geom_line(subset(price1.month.inv, subset = invtype == "Usable Marijuana "), 
+            mapping = aes(x =year_month, y = price_gram_ave, group = 1), color = "dodgerblue2", size = 1) +
+  geom_line(subset(price2.month.inv, subset = invtype == "Usable Marijuana "),
+            mapping = aes( x = year_month, y = tprice_tweight, group = 1), color = "red2", size = 1) +
+  labs(title = "Compare of two price methods",
+       subtitle = "for Usable Marijuana", 
+       x = "year and month", y = "dollar per gram", 
+       caption = "After remove outliers. For average(price per gram), n = 477345. For total price/ total gram, n = 479574") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +
+  theme(axis.text.y = element_text(size = 12)) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 16)) +
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  annotate("text", x = 13, y = 11, label = "Using average(price per gram)", color = "dodgerblue2", size = 5) + 
+  annotate("text", x = 13, y = 9, label = "Using total price/total gram", color = "red2", size = 5) 
+
+ggplot() + 
+  geom_line(subset(price1.month.inv, subset = invtype == "Marijuana Extract for Inhalation "), 
+            mapping = aes(x =year_month, y = price_gram_ave, group = 1), color = "dodgerblue2",size = 1) +
+  geom_line(subset(price2.month.inv, subset = invtype == "Marijuana Extract for Inhalation "),
+            mapping = aes( x = year_month, y = tprice_tweight, group = 1), color = "red2", size = 1) +
+  labs(title = "Compare of two price methods",
+       subtitle = "for Marijuana Extract for Inhalation", 
+       x = "year and month", y = "dollar per gram", 
+       caption = "After remove outliers. For average(price per gram), n = 477345. For total price/ total gram, n = 479574") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) +   
+    theme(axis.text.y = element_text(size = 12)) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 16)) +
+  annotate("rect", xmin = 2, xmax = 5, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  annotate("text", x = 9, y = 62, label = "Using average(price per gram)", color = "dodgerblue2", size = 5) +
+  annotate("text", x = 5, y = 45, label = "Using total price/total gram", color = "red2", size = 5) 
+
+```
+
+- Except the abnormal period, in general, the price is decreasing over time. The price for Marijuana Extract for Inhalation is always higher than Usable Marijuana, but it also decrease quicker than Usable Marijuana.
+- Except the abnormal period, the price tendency calculated by two methods is nearly the same.
+
+### Trend of Price Per Transaction
+
+1. price per transaction for each month
+
+- all inventory type
+
+```{r Price Per Transaction}
+# get the dataset for transaction price change analysis
+# do not do anything about inventory type
+dataset.trans = dataset
+
+# get the total price per transaction
+trans.total = aggregate( price_adjust ~ transactionid, dataset.trans, sum)
+# get the date of each transaction id
+trans.date = aggregate(year_month ~ transactionid, dataset.trans, max)
+# merge two dataset
+trans.total = merge(trans.total, trans.date, "transactionid")
+names(trans.total)[2] = "total_price"
+
+# do not deal with outliers
+# calculate the average price per transaction id in each month
+trans.price = ddply(trans.total, "year_month", summarise,
+                    price_avg = mean(total_price))
+
+# plot the average price per transaction id in each month
+ggplot(trans.price, mapping = aes(x = year_month, y = price_avg, group = 1)) + 
+  geom_line(size = 1) +
+  labs(title = "Average price per transaction for each month", x = "year and month", y = "dollar per transaction") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) + 
+    theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green")
+```
+
+2. usable weight per transaction in each month
+
+- all inventory type
+
+```{r usable weight per transaction}
+
+# get the total usable weight per transaction
+# only two inventory type has usable weight
+trans.totalweight = aggregate(usableweight ~ transactionid, dataset.trans, sum)
+# merge dataset
+trans.totalweight = merge(trans.totalweight, trans.date, "transactionid")
+names(trans.totalweight)[2] = "total_weight"
+
+# do not deal with outliers
+# calculate the average usable weight per transaction id in each month
+trans.weight = ddply(trans.totalweight, "year_month",summarise,
+                    weight_avg = mean(total_weight, na.rm  = TRUE))
+
+# plot the average price per transaction id in each month
+ggplot(trans.weight, mapping = aes(x = year_month, y = weight_avg, group = 1)) + 
+  geom_line(size = 1) +
+  labs(title = "Average usable weight per transaction for each month", x = "year and month", y = "gram per transaction") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10)) + 
+  theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green")
+```
+
+- As price going down, the average price of each transaction is also decreasing. People still buy nearly the same amount of marijuana product in each transaction.
+- More and more people begin to buy marijuana product, which leads to the revenue increase.
+
+### Price Analysis for one location (location = 445)
+
+```{r location data}
+# read the price dataset for one location, location = 445
+dataset2 = read.csv(file = "price_445.csv", header = TRUE)
+
+# generate year_month variables for further analysis
+dataset2$year_month = format(as.Date(dataset2$sale_date),"%Y-%m")
+```
+
+#### Method1: average of price per gram
+
+1. Distribution of price per gram in each month of Usable Marijuana and Marijuana Extract for Inhalation for location = 445
+
+```{r Price Trend Analysis of Method 1 - location 445}
+# generate the dataset for price analysis
+dataset2.price1 = 
+  # remove null values and 0 in usableweight and price_adjust
+  subset(dataset2, !is.na(usableweight) & usableweight != 0 & price_adjust != 0 & !is.na(price_adjust)) %>% 
+  # calculate the price per gram for each transaction
+  mutate(price_gram = price_adjust/usableweight) %>%
+  # remove other inventory types except Usable Marijuana and Marijuana Extract for Inhalation
+  subset(invid %in% c(24,28))
+
+# show the distribution of price per gram in each month by different inventory type
+ggplot(data = dataset2.price1, mapping = aes(x = year_month, y = price_gram)) +
+  geom_point(position = "jitter", size = 0.5) + 
+  facet_wrap("invtype", ncol = 1, scale = "free") +
+  labs(title = "Distribution of price per gram (location = 445)", x = "year and month", y = "price per gram ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6))
+```
+
+- decide not to deal with outliers because it seems there is not many outliers
+
+2. Average price per gram trend of Usable Marijuana and Marijuana Extract for Inhalation for location = 445
+```{r Average price per gram trend location 445}
+# calculate the average gram_price of each inventory type in each month
+price1.month.inv2 = ddply(dataset2.price1, c("year_month","invtype"), summarise,
+                         price_gram_ave = mean(price_gram))
+
+# the distribution of average gram_price of each inventory type in each month
+price1.2 = ggplot(data = price1.month.inv2, mapping = aes(x = year_month, y = price_gram_ave, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = "average price per gram (location = 445)", subtitle = "By months and inventory type", x = "years and months", y = "average price per gram") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  theme(legend.position="bottom")
+price1.2
+```
+
+#### Method2: Total price/ Total amount
+
+1. Distribution of price and usable weight in each month of Usable Marijuana and Marijuana Extract for Inhalation for location = 445
+
+```{r Price Trend Analysis of Method2 - location 445}
+dataset2.price2 = 
+   # remove null values and 0 in usableweight and price_adjust
+   subset(dataset2, !is.na(usableweight) & usableweight != 0 & price_adjust != 0 & !is.na(price_adjust)) %>%
+   # remove other inventory types except Usable Marijuana and Marijuana Extract for Inhalation
+   subset(invid %in% c(24,28))
+
+# distribution of adjusted price of each transaction by different inventory type for location = 445
+ggplot(data = dataset2.price2, mapping = aes(x = year_month, y = price_adjust)) + 
+  geom_point(position = "jitter", size = 0.5) +  
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "distribution of adjusted price of each transaction (location = 445)", x = "year and month",  y = "price ($)") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+
+# distribution of usable weight of each transaction by different inventory type for location = 445
+ggplot(data = dataset2.price2, mapping = aes(x = year_month, y = usableweight)) + 
+  geom_point(position = "jitter", size = 0.5) +
+  facet_wrap("invtype", scales = "free") + 
+  labs(title = "distribution of usable weight of each transaction (location = 445)", x = "year and month", y = "usable weight (gram)") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7))
+```
+
+- do not deal with outliers
+ 
+2. trend of total price/total amount of Usable Marijuana and Marijuana Extract for Inhalation in each month for location = 445
+```{r total price/ total amount trend location 445}
+# calculate the total price/total amount of each inventory type in each month
+price2.month.inv2 = ddply(dataset2.price2, c("year_month","invtype"), summarise,
+                         total_price = sum(price_adjust),
+                         total_weight = sum(usableweight),
+                         tprice_tweight = total_price/total_weight)
+
+# the distribution of average price of each inventory type in each month
+price2.2 = ggplot(data = price2.month.inv2, mapping = aes(x = year_month, y = tprice_tweight, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = "total price/total amount", subtitle = "By months and inventory type, location = 445", x = "years and months", y = "average price") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 7)) + 
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") + 
+  theme(legend.position="bottom")
+price2.2
+```
+
+#### compare of method1 and method2
+```{r compare locatio 445}
+ggplot() + 
+  geom_line(subset(price1.month.inv2, subset = invtype == "Usable Marijuana "), 
+            mapping = aes(x =year_month, y = price_gram_ave, group = 1), color = "dodgerblue2", size = 1) +
+  geom_line(subset(price2.month.inv2, subset = invtype == "Usable Marijuana "),
+            mapping = aes( x = year_month, y = tprice_tweight, group = 1), color = "red2", size = 1) +
+  labs(title = "Compare of two price methods",
+       subtitle = "for Usable Marijuana, location  = 445", 
+       x = "year and month", y = "dollar per gram", 
+       caption = "do not deal with outliers. n = 1141952") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 9)) + 
+  theme(axis.text.y = element_text(size = 12)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 16)) +
+  annotate("rect", xmin = 5, xmax = 9, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  annotate("text", x = 20, y = 10, label = "Using average(price per gram)", color = "dodgerblue2", size = 5) + 
+  annotate("text", x = 13, y = 9, label = "Using total price/total gram", color = "red2", size = 5) 
+
+ggplot() + 
+  geom_line(subset(price1.month.inv2, subset = invtype == "Marijuana Extract for Inhalation "), 
+            mapping = aes(x =year_month, y = price_gram_ave, group = 1), color = "dodgerblue2", size = 1) +
+  geom_line(subset(price2.month.inv2, subset = invtype == "Marijuana Extract for Inhalation "),
+            mapping = aes( x = year_month, y = tprice_tweight, group = 1), color = "red2", size = 1) +
+  labs(title = "Compare of two price methods",
+       subtitle = "for Marijuana Extract for Inhalation. location = 445", 
+       x = "year and month", y = "dollar per gram", 
+       caption = "do not deal with outliers. n = 1141952") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 9)) + 
+    theme(axis.text.y = element_text(size = 12)) +
+  theme(plot.title = element_text(hjust = 0.5, size = 22)) + 
+  theme(plot.subtitle = element_text(hjust = 0.5, size = 16)) +
+  annotate("rect", xmin = 1, xmax = 4, ymin = -Inf, ymax = Inf, alpha = 0.2, fill = "green") +
+  annotate("text", x = 9, y = 72, label = "Using average(price per gram)", color = "dodgerblue2", size = 5) +
+  annotate("text", x = 5, y = 53, label = "Using total price/total gram", color = "red2", size = 5) 
+```
+
+- The price change of one store is nearly the same as the over all price change.
