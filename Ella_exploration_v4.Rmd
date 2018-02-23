@@ -1,0 +1,360 @@
+---
+title: "price_invtype_exploration"
+author: "EllaJiang"
+date: "2/12/2018"
+output: html_document
+---
+```{r global_options, include=FALSE} 
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE) 
+```
+
+```{r load library}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+### load data and change some variable names
+
+```{r get data}
+# read data from the download folder
+dataset = read.csv(file = "price_invtype_sample1.csv", header = TRUE)
+# remove scientific notation
+options(scipen = 999) 
+# change the format of some variables
+# lapply(dataset, class)
+dataset$sale_date = as.Date(dataset$sale_date)
+# generate year_mo and year_week variables
+number1 = c("1","2","3","4","5","6","7","8","9")
+number2 = c("01","02","03","04","05","06","07","08","09")
+dataset$sale_month = mapvalues(as.character(dataset$sale_month), number1, number2)
+dataset$sale_week = mapvalues(as.character(dataset$sale_week), number1, number2)
+dataset = mutate(dataset, 
+                 year_mo= paste(sale_year, sale_month, sep = "."),
+                 year_week = paste(sale_year, sale_week, sep = "."))
+```
+
+### Transaction frequency of each inventory type across weeks
+
+```{r transaction frequency across weeks}
+dataset.count = dataset[which(dataset$invtype!=""),]
+dataset.count = dataset[which(!is.na(dataset$sale_date)),]
+
+# count the number of transaction of each inventory type in each week
+count.week = ddply(dataset.count, 
+                   c("year_week","invtype"), 
+                   summarise, 
+                   n.sold = n())
+
+# plot the number of transaction of each inventory type in each week
+ggplot(data = count.week, mapping = aes(x = year_week, y = n.sold, group = invtype, color = invtype)) +
+  geom_line() + 
+  labs(title = 'Transaction frequency of each inventory type cross weeks',y = 'transaction frequency') + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 6))
+```
+
+### Frequency of different inventory type across year months
+
+```{r frequency in months}
+# count the number of sells of each inventory type in each month
+count.month = ddply(dataset.count, 
+                    c("year_mo","invtype"), 
+                    summarise, 
+                    n.sold = n())
+
+# plot the number of sells of each inventory type in each month (line chart)
+ggplot(data = count.month, mapping = aes(x = year_mo , y = n.sold, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'Transaction frequency of inventory type cross months',y = 'transaction frequency') + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 6))
+```
+
+### Transaction Revenue of each inventory type across weeks
+```{r revenue in weeks}
+# remove null values from the dataset
+dataset.revenue = dataset[which(dataset$invtype!=""),]
+dataset.revenue = dataset.revenue[which(!is.na(dataset$price_adjust)),]
+
+# sum the revenue for each inventory type in each week
+revenue.week = ddply(dataset.revenue,
+                     c("year_week","invtype"),
+                     summarise,
+                     revenue = sum(price_adjust))
+
+# plot the revenue for each inventory type in each week
+ggplot(data = revenue.week, mapping = aes(x = year_week, y = revenue, group = invtype, color = invtype, fill = invtype)) +
+  geom_area()+
+  labs(title = "Transaction revenue of inventory type cross weeks", y = "transaction revenue") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 5))
+
+```
+
+### Transaction Revenue of each inventory type across months
+```{r revenue in weeks2}
+# sum the revenue for each inventory type in each week
+revenue.month = ddply(dataset.revenue,
+                     c("year_mo","invtype"),
+                     summarise,
+                     revenue = sum(price_adjust))
+
+# plot the revenue for each inventory type in each week
+ggplot(data = revenue.month, mapping = aes(x = year_mo, y = revenue, group = invtype, color = invtype, fill = invtype)) +
+  geom_area()+
+  labs(title = "Transaction revenue of inventory type cross months", y = "transaction revenue") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```
+
+### Analysis on Price Using the first method: average(gram_price)
+
+#### distribution of gram_price of each inventory type in different date
+```{r average gram_price of each inventory type per week}
+# remove price = 0 or usableweigth = 0 and missing values
+dataset.price = subset(dataset, price_adjust!=0)
+dataset.price = subset(dataset.price, usableweight_adjust != 0)
+
+# calculate the gram_price of each transaction
+dataset.price = mutate(dataset.price, gram_price = price_adjust/usableweight)
+
+# one try of price distribution
+# ----------------------------------------------------------------------
+# # the distribution of gram_price of each inventory type
+# dataset.price.nogroup = dataset.price[,c("sale_date","gram_price")]
+# ggplot(data = dataset.price, mapping = aes(x=sale_date, y = gram_price)) + 
+#   geom_point(data = dataset.price.nogroup, color= "grey") + 
+#   geom_point(color = "black") + 
+#   facet_wrap("invtype", nrow = 2, ncol = 2) + 
+#   labs(title = 'distribution of gram_price by date')
+#   
+# # the distribution of gram_price of each inventory type (under 250)
+# dataset.price.nogroup = dataset.price[,c("sale_date","gram_price")]
+# ggplot(data = dataset.price, mapping = aes(x=sale_date, y = gram_price)) + 
+#   geom_point(data = dataset.price.nogroup, color= "grey") + 
+#   geom_point(color = "black") + 
+#   facet_wrap("invtype", nrow = 2, ncol = 2) + 
+#   labs(title = 'distribution of gram_price by date') +
+#   ylim(0,250)
+# 
+# ggplot(data = dataset.price[which(dataset.price$invid == 28),], mapping = aes(x = price_adjust)) + 
+#   geom_density()
+
+# another try of price distribution 
+# ------------------------------------------------
+# subset dataset
+inhalation = subset(dataset.price, invtype == "Marijuana Extract for Inhalation ")
+infused = subset(dataset.price, invtype== "Marijuana Mix Infused ")
+packaged = subset(dataset.price, invtype == "Marijuana Mix Packaged ")
+usable = subset(dataset.price, invtype == "Usable Marijuana ")
+
+# quantile plot of gram_price of each invtype
+inha = ggplot(data = inhalation, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Marijuana Extract for Inhalation)')
+infu = ggplot(data = infused, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Marijuana Mix Infused)')
+pack = ggplot(data = packaged, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Marijuana Mix Packaged)')
+usab = ggplot(data = usable, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Usable Marijuana)')
+
+# put the graphs together
+gridExtra::grid.arrange(inha, infu, pack, usab,ncol=2)
+```
+
+```{r}
+# distribution of gram_price in each invtype
+prob = c(0,0.05,0.1,0.5,0.9,0.95,1)
+print("quantile distrition of Marijuana Extract for Inhalation")
+data.frame(gram_price = quantile(inhalation$gram_price, prob))
+print("quantile distrition of Marijuana Mix Infused")
+data.frame(gram_price = quantile(infused$gram_price, prob))
+print("quantile distrition of Marijuana Mix Packaged")
+data.frame(gram_price = quantile(packaged$gram_price, prob))
+print("quantile distrition of Usable Marijuana")
+data.frame(gram_price = quantile(usable$gram_price, prob))
+
+# 5% - 95% gram_price in each invtype
+inhalation.new = subset(inhalation, 
+                        gram_price < quantile(inhalation$gram_price, 0.95) & gram_price > quantile(inhalation$gram_price, 0.05))
+infused.new = subset(infused, 
+                        gram_price < quantile(infused$gram_price, 0.95) & gram_price > quantile(infused$gram_price, 0.05))
+packaged.new = subset(packaged, 
+                        gram_price < quantile(packaged$gram_price, 0.95) & gram_price > quantile(packaged$gram_price, 0.05))
+usable.new = subset(usable, 
+                        gram_price < quantile(usable$gram_price, 0.95) & gram_price > quantile(usable$gram_price, 0.05))
+
+# quantile plot of gram_price of each invtype
+inha.new = ggplot(data = inhalation.new, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Marijuana Extract for Inhalation)_New')
+infu.new = ggplot(data = infused.new, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Marijuana Mix Infused)_New')
+pack.new = ggplot(data = packaged.new, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)_New', 
+       title = 'Quantile Plot \n gram_price (Marijuana Mix Packaged)')
+usab.new = ggplot(data = usable.new, mapping = aes(sample = gram_price)) + 
+  stat_qq(geom = 'point', distribution='qunif') + 
+  labs(x='Quantiles', y='gram_price(dollars per gram)', 
+       title = 'Quantile Plot \n gram_price (Usable Marijuana)_New')
+
+# put the graphs together
+gridExtra::grid.arrange(inha.new, infu.new, pack.new, usab.new,ncol=2)
+```
+
+#### distribution of avegram_price of each inventory type in each week
+
+* with outliers (0%-100%)
+
+```{r}
+# calculate the average gram_price of each inventory type in each week
+price.week = ddply(dataset.price, 
+                   c("year_week","invtype"),
+                   summarise,
+                   gram_price_ave = mean(gram_price),
+                   gram_price_max = max(gram_price),
+                   gram_price_min = min(gram_price),
+                   gram_price_median = median(gram_price),
+                   gram_price_std = sd(gram_price))
+
+# the distribution of average gram_price of each inventory type in each week
+ggplot(data = price.week, mapping = aes(x=year_week, y = gram_price_ave, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'average gram_price by week and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+
+# the distribution of median gram_price of each inventory type in each week
+ggplot(data = price.week, mapping = aes(x=year_week, y = gram_price_median, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'median gram_price by week and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```
+
+* remove outliers (5%-95%)
+
+```{r}
+ggplot(data = , mapping = aes(x = year_week, y = gram_price)) + geom_boxplot()
+
+dataset.price.week.new = ddply(dataset.price, c("year_week","invtype"), mutate,
+                        five_percent = quantile(gram_price, 0.05),
+                        ninty_five_percent = quantile(gram_price, 0.95))
+
+dataset.price.week.new.clean = subset(dataset.price.week.new, 
+                              gram_price > five_percent & gram_price < ninty_five_percent)
+
+price.week.new = ddply(dataset.price.week.new.clean, 
+                   c("year_week","invtype"),
+                   summarise,
+                   gram_price_ave = mean(gram_price),
+                   gram_price_max = max(gram_price),
+                   gram_price_min = min(gram_price),
+                   gram_price_median = median(gram_price),
+                   gram_price_std = sd(gram_price))
+
+inhalation2 = subset(price.week.new, invtype == "Marijuana Extract for Inhalation ")
+infused2 = subset(price.week.new, invtype== "Marijuana Mix Infused ")
+packaged2 = subset(price.week.new, invtype == "Marijuana Mix Packaged ")
+usable2 = subset(price.week.new, invtype == "Usable Marijuana ")
+
+# the distribution of average gram_price of each inventory type in each week
+q1= ggplot(data = inhalation2, mapping = aes(x= as.factor(year_week), y = gram_price_ave)) + 
+  geom_point() +
+  labs(title = 'average gram_price by weeks \n Marijuana Extract for Inhalation(5%-95%)' )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+
+q2 = ggplot(data = infused2, mapping = aes(x= as.factor(year_week), y = gram_price_ave)) + 
+  geom_point() +
+  labs(title = 'average gram_price by weeks \n Marijuana Mix Infused(5%-95%)' )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+ 
+q3 =  ggplot(data = packaged2, mapping = aes(x= as.factor(year_week), y = gram_price_ave)) + 
+  geom_point() +
+  labs(title = 'average gram_price by weeks \n Marijuana Mix Packaged(5%-95%)' )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+
+q4 =  ggplot(data = usable2, mapping = aes(x= as.factor(year_week), y = gram_price_ave)) + 
+  geom_point() +
+  labs(title = 'average gram_price by weeks \n Usable Marijuana(5%-95%)' )+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+
+gridExtra::grid.arrange(q1, q2, q3, q4,ncol=2)
+
+ggplot(data = price.week.new, mapping = aes(x = as.factor(year_week), y = gram_price_ave, color = invtype)) + 
+  geom_point() +
+  labs(title = 'average gram_price by weeks \n different invtype (5%-95%)' ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```
+
+
+#### distribution of avegram_price of each inventory type in each month
+
+```{r}
+# calculate the average gram_price of each inventory type in each month
+price.month = ddply(dataset.price, 
+                   c("year_mo","invtype"),
+                   summarise,
+                   gram_price_ave = mean(gram_price),
+                   gram_price_max = max(gram_price),
+                   gram_price_min = min(gram_price),
+                   gram_price_median = median(gram_price),
+                   gram_price_std = sd(gram_price))
+
+# the distribution of average gram_price of each inventory type in each month
+ggplot(data = price.month, mapping = aes(x = year_mo, y = gram_price_ave, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'average gram_price by months and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+
+# the distribution of median gram_price of each inventory type in each month
+ggplot(data = price.month, mapping = aes(x=year_mo, y = gram_price_median, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'median gram_price by months and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```
+
+### Analysis on Price Using the second method: total revenue/total amount
+
+#### distribution of total revenue/total amount of each inventory type in each week
+```{r calculate price}
+# calculate the average price of each week each inventory type
+price.week2 = ddply(dataset.price, c("year_week","invtype"),
+                    summarise, 
+                    tprice = sum(price_adjust), 
+                    tusableweight = sum(usableweight_adjust))
+price.week2 = mutate(price.week2, 
+                     average_price = tprice/tusableweight) 
+
+# distribution of average price for each week each inventory type
+ggplot(data = price.week2, mapping = aes(x = year_week, y = average_price, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'average price by week and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```
+
+
+#### distribution of total revenue/total amount of each inventory type in each week
+```{r calculate price2}
+# calculate the average price of each week each inventory type
+price.month2 = ddply(dataset.price, c("year_mo","invtype"),
+                    summarise, 
+                    tprice = sum(price_adjust), 
+                    tusableweight = sum(usableweight_adjust))
+price.month2 = mutate(price.month2, 
+                     average_price = tprice/tusableweight) 
+
+# distribution of average price for each week each inventory type
+ggplot(data = price.month2, mapping = aes(x = year_mo, y = average_price, group = invtype, color = invtype)) + 
+  geom_line() + 
+  labs(title = 'average price by months and inventory type')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1, size = 7))
+```

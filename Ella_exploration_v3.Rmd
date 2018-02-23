@@ -1,0 +1,41 @@
+---
+title: "Exploration"
+author: "EllaJiang"
+date: "February 5, 2018"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+```
+
+```{r setup, include=FALSE}
+# confused of the data
+
+dispending.org = read.csv(file = "/Users/jiangxin/Google Drive/Semester IV/System Project/data analysis/dispensing_twoday.csv")
+dispending = dispending.org
+options(scipen = 999)
+
+table(duplicated(dispending[,"transactionid"]))
+duplicate = dispending[duplicated(dispending[,"transactionid"]),]
+duplicate = arrange(duplicate, transactionid)
+# do we need to do something with the transaction id?
+# how do we deal with the duplicate transaction id
+
+dispending$sessiontime = as.POSIXct(dispending$sessiontime, origin = "1970-01-01")  # is this the right code to change from number to datetime in R?
+dispending = select(dispending, transactionid, inventoryid, sessiontime, inventorytype, usableweight, weight, price, created) ## what is the difference between sessiontime and created time? Which time should be used as sale time?
+names(dispending)[3] = "sale_time"
+
+dispending$sale_year = as.numeric(format(dispending$sale_time,"%Y"))
+dispending$sale_month =  as.numeric(format(dispending$sale_time,"%m"))
+dispending$sale_day =  as.numeric(format(dispending$sale_time,"%d"))
+
+dispending$price_x = dispending$price * 1.37 # All of them multiply by 1.37 or part of them?
+dispending[dispending$usableweight == "NULL", ]$usableweight = NA
+dispending$usableweight = as.numeric(as.character(dispending$usableweight)) # not quit sure
+dispending = mutate(dispending, gram_price = price_x/usableweight)
+
+# change the number of inventory type to the real name of the inventory type
+
+```
+

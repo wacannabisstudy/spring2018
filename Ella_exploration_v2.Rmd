@@ -1,0 +1,123 @@
+---
+title: "DataExploration"
+author: "EllaJiang"
+date: "1/30/2018"
+output: html_document
+---
+```{r global_options, include=FALSE} 
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE) 
+```
+
+```{r load library}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+```{r get data}
+dataset = readRDS('retail_one_percent.rds')
+# dataset = dataset[sample(nrow(dataset),50000),]
+options(scipen = 999) 
+# add a new column: the sale date Y-M-D
+dataset$date <- as.Date(with(dataset, paste(year_mo, mday,sep="-")), "%Y-%m-%d")
+```
+
+#### General Questions
+
+* 1. Why some price are negative numebrs 
+* 2. What are the meanings of variables: inv_strain, inv_productname? --- This is related to another problem: How can we decide the type of different marijuana product. This is important for all analysis by product type. I use invtype here for analysis.
+* 3. As can be seen from the distributions below, there are some outliers, how can we deal with these outliers
+* 4. There are some missing values in the dataset, such as the usable weight of some invtype, how can we deal with the missing vlaues. Also, there are some 0 in the usable weight column, which is not usable. How can we deal with this?
+* 5. Can we Use CPI/Inflaction rate to adjust the price?
+* 6. Do we need to predict the price in the future?
+
+
+#### General Findings:
+
+##### Frequency of different invtype across month and date in the dataset
+
+```{r frequency}
+# the occurance of each invtype by month
+invtype.month = data.frame(with(dataset, table(year_mo, invtype)))
+names(invtype.month)[3] = 'occurance'
+inv.month.summary = ddply(invtype.month, 'year_mo', summarise, total = sum(occurance))
+inv.month.summary$invtype = 'total'
+names(inv.month.summary)[2] = 'occurance'
+invtype.month = rbind(inv.month.summary,invtype.month)
+ggplot(data = invtype.month, mapping = aes(x = year_mo, y = occurance, group = invtype, color = invtype)) + geom_line() + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + labs(title = 'occurance of inventory type by month',y = 'occurance of transaction')
+
+# the occurance of each invtype by day
+invtype.day = data.frame(with(dataset, table(invtype,date)))
+names(invtype.day)[3] = 'occurance'
+inv.day.summary = ddply(invtype.day, 'date', summarise, total = sum(occurance))
+inv.day.summary$invtype = 'total'
+names(inv.day.summary)[2] = 'occurance'
+invtype.day = rbind(inv.day.summary,invtype.day)
+fre.day = ggplot(data = invtype.day, mapping = aes(x = date, y = occurance, group = invtype, color = invtype)) + geom_line() + labs(title = 'occurance of inventory type by day',y = 'occurance of transaction')
+fre.day
+```
+
+* There is a clear increase in transactions of all inventory type.
+* Usable Marijuana has many more transactions than other inventory type.
+
+##### Analysis of Usable Weight
+
+```{r usable weight}
+# summary(dataset$usableweight)
+# subset dataset
+uw.data = select(dataset, sale_time, usableweight,invtype, year_mo,mday,date)
+
+# the scatter plot of usableweigth over sale_time
+ggplot(data = na.omit(uw.data), mapping = aes(x = sale_time , y = usableweight, color = invtype)) + geom_point() + labs(title = 'distribution of usable weight')
+
+# the summary of usable weight for different invtype in different year_mo
+uw.summary = ddply( uw.data, c('invtype','year_mo'), summarize, average.weight = mean(usableweight), max.weight = max(usableweight), min.weight = min(usableweight), median.weight = median(usableweight), std.weight = sd(usableweight))
+uw.summary = arrange(uw.summary, invtype,year_mo)
+uw.tendency = ggplot(uw.summary, mapping = aes(x=year_mo, y = average.weight, group = invtype, color = invtype)) + geom_line()  + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + labs(title = 'average usable weight of inventory type by month',y = 'average usable weight')
+uw.tendency
+
+# the summary of usable weight for different invtype diffrent day
+uw.summary = ddply( uw.data, c('invtype','date'), summarize, average.weight = mean(usableweight), max.weight = max(usableweight), min.weight = min(usableweight), median.weight = median(usableweight), std.weight = sd(usableweight))
+uw.summary = arrange(uw.summary, invtype, date)
+uw.day.tendency = ggplot(na.omit(uw.summary), mapping = aes(x=date, y = average.weight, group = invtype, color = invtype)) + geom_line()  + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + labs(title = 'average usable weight of inventory type by day',y = 'average usable weigth')
+uw.day.tendency
+```
+
+* There are many missing value, 0 and outliers in usableweight variable. How can we deal with them?
+* I guess if we remove the outlier, the average usable weight of each invtype in each month could be stable.
+
+##### Analysis on THC
+```{r THC}
+# subset dataset
+THC.data = select(dataset, invtype,THC, usableweight, price_x,date,year_mo)
+# distribution of THC and THC/usableweight
+ggplot(data = THC.data, mapping = aes(x = date, y = THC)) + geom_point() + labs(title = 'Distribution of THC')
+ggplot(data = THC.data, mapping = aes(x = date, y = THC/usableweight)) + geom_point() + labs(title = 'Distribution of THC/usableweight', ylab = 'THC/usableweight')
+
+THC.subset = THC.data[apply(THC.data!=0, 1, all),]
+THC.subset = mutate(THC.subset, THC_weight = THC/usableweight, THC_price = price_x/THC)
+THC.summary = ddply(THC.subset, c("invtype","year_mo"), summarise, ave_THC_weight = mean(THC_weight,na.rm = TRUE), ave_THC_price = mean(THC_price, na.rm = TRUE) )
+ggplot(data = na.omit(THC.summary), mapping = aes(x = year_mo, y = ave_THC_weight, group = invtype, color = invtype)) + geom_line() + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + labs(title = 'average THC/usableWeight in different month')
+ggplot(data = na.omit(THC.summary), mapping = aes(x= year_mo, y = ave_THC_price, group = invtype, color = invtype)) + geom_line() + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + labs(title = 'average price_x/THC in different month')
+```
+
+##### Analysis on Price
+```{r price}
+price.data = select(dataset, price_x, usableweight, gram_price_x, invtype, year_mo, date)
+
+ggplot(data = na.omit(price.data), mapping = aes(x=date, y = gram_price_x, color = invtype)) + geom_point() + labs(title = 'distribution of gram_price_x by date')
+
+price.summary = ddply(price.data, c("year_mo","invtype"),summarise,gram_price_ave = mean(gram_price_x),gram_price_max = max(gram_price_x),gram_price_min = min(gram_price_x),gram_price_median = median(gram_price_x),gram_price_std = sd(gram_price_x))
+ggplot(data = na.omit(price.summary), mapping = aes(x=year_mo, y = gram_price_ave, group = invtype, color = invtype)) + geom_line() + labs(title = 'average gram_price_x by month and product') + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1)) + geom_point()
+
+price.summary2 = ddply(price.data, c("date","invtype"),summarise,gram_price_ave = mean(gram_price_x),gram_price_max = max(gram_price_x),gram_price_min = min(gram_price_x),gram_price_median = median(gram_price_x),gram_price_std = sd(gram_price_x))
+
+ggplot(data = na.omit(price.summary2[price.summary2[,3]<150,]), mapping = aes(x=date, y = gram_price_ave, group = invtype, color = invtype)) + geom_point() + stat_smooth() + labs(title = 'average gram_price_x trendency by date of different product types') + theme(axis.text.x = element_text(angle=90, vjust=1, hjust=1))
+
+#price.data$rprice = round(price.data$gram_price_x, digits = 0)
+#price.summary2 = ddply(na.omit(price.data), c('rprice'),summarise,count = n())
+#price.summary2 = price.summary2[price.summary2[,1]<25,]
+#price.summary2 = price.summary2[price.summary2[,1]> 0,]
+#ggplot(data = price.summary2, mapping = aes(x = rprice, y = count)) + geom_line()
+```

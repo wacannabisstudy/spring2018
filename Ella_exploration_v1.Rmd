@@ -1,0 +1,73 @@
+---
+title: "DataExplore"
+author: "EllaJiang"
+date: "1/29/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(zoo)
+library(plyr)
+library(stats)
+```
+
+```{r load data}
+retail = read.csv('/Users/jiangxin/Google Drive/Semester IV/System Project/RAND-CMU Capstone S18/Data Sets/WA Data/retail_toy.csv',header =TRUE)
+```
+
+```{r relationship between price, price_x, gram_price_x}
+data.price = retail[,c('price','price_x','gram_price_x','usableweight')]
+
+# price_x = price * 1.37
+data.price$re1 = with(data.price, price_x/price)
+
+# gram_price_x = price_x/usableweight
+data.price$re2 = with(data.price, price_x/usableweight)
+
+
+```
+
+```{r product distribution}
+product = as.data.frame(table(retail$invtype))
+names(product)[1]  = "invtype"
+product = mutate(product, percentage = product$Freq/sum(product$Freq))
+product = arrange(product,desc(Freq))
+product
+```
+
+```{r}
+# what are the meaning of negative price?
+ggplot(data = retail, mapping = aes(x=year_mo, y = price, color = invtype)) + geom_point() + geom_jitter()
+ggplot(data = retail, mapping = aes(x=year_mo, y = price_x, color = invtype)) + geom_point() + geom_jitter()
+ggplot(data = retail, mapping = aes(x=year_mo, y = gram_price_x, color = invtype)) + geom_point() + geom_jitter()
+ggplot(data = retail, mapping = aes(x=year_mo, y = gram_price_x, color = invtype)) + geom_point() + ylim(0,700) + geom_jitter()
+```
+
+```{r gram_price change}
+retail.price = aggregate(gram_price_x ~ year+month, retail,mean)
+names(retail.price)[3] = "mean_price"
+retail.price2 = aggregate(gram_price_x ~ year+month, retail,median)
+names(retail.price2)[3] = "median_price"
+retail.price = merge(retail.price,retail.price2,by=c("year","month"))
+retail.price$date = as.yearmon(paste(retail.price$year,retail.price$month,sep='-'))
+retail.price = arrange(retail.price,date)
+ggplot(data= retail.price,mapping = aes(x=as.Date(date), y = mean_price))+geom_point()+geom_line(color = "blue") + geom_line(data = retail.price, mapping = aes(x=as.Date(date), y = median_price),color = "red") + geom_point(data = retail.price, mapping = aes(x=as.Date(date), y = median_price)) + labs(y = "price", x = "date")
+```
+
+```{r gram_price change by product}
+category.price = aggregate(gram_price_x ~ year+month+invtype, retail,mean)
+names(category.price)[4] = "mean_price"
+category.price2 = aggregate(gram_price_x ~ year+month+invtype, retail,median)
+names(category.price2)[4] = "median_price"
+category.price = merge(category.price,category.price2,by=c("year","month","invtype"))
+category.price$date = as.yearmon(paste(category.price$year,category.price$month,sep='-'))
+category.price = arrange(category.price,date)
+ggplot(data= category.price,mapping = aes(x=as.Date(date), y = mean_price,color = invtype))+geom_point(color = "black")+geom_line() + geom_line(data = category.price, mapping = aes(x=as.Date(date), y = median_price,color = invtype)) + geom_point(data = category.price, mapping = aes(x=as.Date(date), y = median_price,color = invtype)) + labs(y = "price", x = "date")
+```
+
+```{r revenue by month by product}
+
+
+
+```{r}
